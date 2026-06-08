@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thiranex · Sales Intelligence Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c12;
+    --surface: #111318;
+    --surface2: #181c24;
+    --border: rgba(255,255,255,0.07);
+    --accent: #f0c040;
+    --accent2: #4af0b0;
+    --accent3: #f06090;
+    --accent4: #6090f0;
+    --text: #e8eaf0;
+    --muted: #6b7280;
+    --card-glow: rgba(240,192,64,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  /* BG texture */
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(240,192,64,0.04) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 40% at 80% 100%, rgba(74,240,176,0.04) 0%, transparent 60%);
+    pointer-events: none; z-index: 0;
+  }
+
+  /* HEADER */
+  header {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 32px;
+    background: rgba(10,12,18,0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px; letter-spacing: -0.5px; }
+  .logo span { color: var(--accent); }
+  .header-right { display: flex; align-items: center; gap: 16px; }
+  .live-badge {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--accent2); letter-spacing: 1px;
+  }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.3)} }
+
+  /* MAIN LAYOUT */
+  .main { position: relative; z-index: 1; padding: 28px 32px; max-width: 1600px; margin: 0 auto; }
+
+  /* IMPORT ZONE */
+  .import-section {
+    background: var(--surface);
+    border: 1px dashed rgba(240,192,64,0.3);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 28px;
+    display: flex; align-items: center; gap: 24px;
+    flex-wrap: wrap;
+  }
+  .import-section h2 { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--accent); letter-spacing: 2px; text-transform: uppercase; }
+  .import-btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn {
+    font-family: 'DM Mono', monospace; font-size: 12px; font-weight: 500;
+    padding: 8px 16px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text); cursor: pointer;
+    transition: all .2s; display: flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); background: rgba(240,192,64,0.06); }
+  .btn.primary { background: var(--accent); color: #0a0c12; border-color: var(--accent); font-weight: 700; }
+  .btn.primary:hover { background: #ffd060; }
+  .import-info { font-size: 11px; color: var(--muted); margin-left: auto; }
+  input[type=file] { display: none; }
+
+  /* FILTERS BAR */
+  .filters-bar {
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+    margin-bottom: 24px;
+    padding: 16px 20px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .filter-label { font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-right: 4px; }
+  select, input[type=text] {
+    font-family: 'DM Mono', monospace; font-size: 12px;
+    background: var(--surface2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; outline: none; cursor: pointer;
+    transition: border-color .2s;
+  }
+  select:hover, input[type=text]:hover { border-color: rgba(240,192,64,0.4); }
+  select:focus, input[type=text]:focus { border-color: var(--accent); }
+  .filter-divider { width: 1px; height: 24px; background: var(--border); }
+
+  /* KPI CARDS */
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  @media(max-width:1100px){ .kpi-grid { grid-template-columns: repeat(2,1fr); } }
+  @media(max-width:600px){ .kpi-grid { grid-template-columns: 1fr; } }
+  .kpi-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    position: relative; overflow: hidden;
+    transition: border-color .25s, transform .25s;
+  }
+  .kpi-card:hover { border-color: rgba(240,192,64,0.25); transform: translateY(-2px); }
+  .kpi-card::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--kpi-color, var(--accent));
+    border-radius: 12px 12px 0 0;
+  }
+  .kpi-label { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .kpi-value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 800; color: var(--text); line-height: 1; }
+  .kpi-sub { font-size: 11px; margin-top: 6px; }
+  .kpi-up { color: var(--accent2); }
+  .kpi-down { color: var(--accent3); }
+  .kpi-icon { position: absolute; right: 18px; top: 18px; font-size: 22px; opacity: 0.18; }
+
+  /* CHARTS GRID */
+  .charts-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 18px; margin-bottom: 18px; }
+  .charts-grid-bottom { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; margin-bottom: 18px; }
+  @media(max-width:1100px){ .charts-grid, .charts-grid-bottom { grid-template-columns: 1fr; } }
+
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px;
+    transition: border-color .25s;
+  }
+  .chart-card:hover { border-color: rgba(240,192,64,0.15); }
+  .chart-title {
+    font-family: 'Syne', sans-serif; font-size: 12px; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;
+  }
+  .chart-title span { color: var(--accent); font-size: 10px; }
+  .chart-wrap { position: relative; height: 260px; }
+  .chart-wrap.tall { height: 310px; }
+
+  /* TABLE */
+  .table-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px; overflow: auto;
+    grid-column: 1 / -1;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead tr { border-bottom: 1px solid var(--border); }
+  th {
+    text-align: left; padding: 8px 12px;
+    font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase;
+    color: var(--muted); font-weight: 500; white-space: nowrap;
+  }
+  td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.03); white-space: nowrap; }
+  tbody tr:hover { background: rgba(255,255,255,0.025); }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  }
+  .badge-green { background: rgba(74,240,176,0.15); color: var(--accent2); }
+  .badge-red { background: rgba(240,96,144,0.15); color: var(--accent3); }
+  .badge-yellow { background: rgba(240,192,64,0.15); color: var(--accent); }
+  .bar-mini { height: 4px; background: var(--surface2); border-radius: 2px; margin-top: 3px; }
+  .bar-fill { height: 100%; border-radius: 2px; background: var(--accent); }
+
+  /* EMPTY STATE */
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    height: 200px; color: var(--muted); font-size: 12px; gap: 8px; text-align: center;
+  }
+  .empty-icon { font-size: 32px; opacity: .4; }
+
+  /* SLICER */
+  .slicer-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .slicer-chip {
+    font-size: 11px; padding: 4px 12px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--surface2); cursor: pointer;
+    transition: all .15s; color: var(--muted);
+  }
+  .slicer-chip.active { border-color: var(--accent); color: var(--accent); background: rgba(240,192,64,0.08); }
+  .slicer-chip:hover { border-color: rgba(240,192,64,0.4); color: var(--text); }
+
+  /* TOAST */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px; z-index: 999;
+    background: var(--accent); color: #0a0c12;
+    font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px;
+    padding: 12px 20px; border-radius: 8px;
+    transform: translateY(80px); opacity: 0;
+    transition: all .3s ease;
+    pointer-events: none;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">THIRANEX <span>·</span> SALES INTELLIGENCE</div>
+  <div class="header-right">
+    <div class="live-badge"><div class="live-dot"></div>LIVE ANALYSIS</div>
+    <button class="btn primary" onclick="loadSampleData()">⚡ Load Sample Data</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- IMPORT -->
+  <div class="import-section">
+    <div>
+      <h2>📂 Import Data</h2>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Upload your sales file to begin analysis</div>
+    </div>
+    <div class="import-btns">
+      <button class="btn" onclick="document.getElementById('csvInput').click()">📄 CSV File</button>
+      <button class="btn" onclick="document.getElementById('xlsxInput').click()">📊 Excel (.xlsx)</button>
+      <input type="file" id="csvInput" accept=".csv" onchange="handleCSV(event)">
+      <input type="file" id="xlsxInput" accept=".xlsx,.xls" onchange="handleXLSX(event)">
+    </div>
+    <div class="import-info" id="importInfo">No file loaded · using sample data</div>
+  </div>
+
+  <!-- FILTERS -->
+  <div class="filters-bar">
+    <span class="filter-label">Region</span>
+    <select id="filterRegion" onchange="applyFilters()">
+      <option value="all">All Regions</option>
+    </select>
+    <div class="filter-divider"></div>
+    <span class="filter-label">Category</span>
+    <select id="filterCategory" onchange="applyFilters()">
+      <option value="all">All Categories</option>
+    </select>
+    <div class="filter-divider"></div>
+    <span class="filter-label">Period</span>
+    <select id="filterPeriod" onchange="applyFilters()">
+      <option value="all">All Time</option>
+      <option value="q1">Q1</option>
+      <option value="q2">Q2</option>
+      <option value="q3">Q3</option>
+      <option value="q4">Q4</option>
+    </select>
+    <div class="filter-divider"></div>
+    <span class="filter-label">Search</span>
+    <input type="text" id="searchInput" placeholder="product or rep..." oninput="applyFilters()" style="width:160px">
+    <button class="btn" onclick="resetFilters()" style="margin-left:auto">↺ Reset</button>
+  </div>
+
+  <!-- SLICERS -->
+  <div style="margin-bottom:20px;">
+    <div style="font-size:10px;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px;">Quick Slicers · Sales Rep</div>
+    <div class="slicer-row" id="repSlicers"></div>
+  </div>
+
+  <!-- KPI CARDS -->
+  <div class="kpi-grid" id="kpiGrid">
+    <div class="kpi-card" style="--kpi-color:var(--accent)">
+      <div class="kpi-icon">💰</div>
+      <div class="kpi-label">Total Revenue</div>
+      <div class="kpi-value" id="kpiRevenue">—</div>
+      <div class="kpi-sub kpi-up" id="kpiRevenueChange">—</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--accent2)">
+      <div class="kpi-icon">🛒</div>
+      <div class="kpi-label">Total Orders</div>
+      <div class="kpi-value" id="kpiOrders">—</div>
+      <div class="kpi-sub" id="kpiOrdersChange" style="color:var(--accent2)">—</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--accent4)">
+      <div class="kpi-icon">📦</div>
+      <div class="kpi-label">Avg Order Value</div>
+      <div class="kpi-value" id="kpiAOV">—</div>
+      <div class="kpi-sub" id="kpiAOVChange" style="color:var(--accent4)">—</div>
+    </div>
+    <div class="kpi-card" style="--kpi-color:var(--accent3)">
+      <div class="kpi-icon">🎯</div>
+      <div class="kpi-label">Top Product</div>
+      <div class="kpi-value" id="kpiTopProduct" style="font-size:16px;padding-top:4px">—</div>
+      <div class="kpi-sub" id="kpiTopProductSub" style="color:var(--accent3)">—</div>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW 1 -->
+  <div class="charts-grid">
+    <div class="chart-card">
+      <div class="chart-title">Revenue Trend <span id="trendLabel">MONTHLY</span></div>
+      <div class="chart-wrap tall"><canvas id="revenueChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Sales by Category <span>BREAKDOWN</span></div>
+      <div class="chart-wrap tall"><canvas id="categoryChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- CHARTS ROW 2 -->
+  <div class="charts-grid-bottom">
+    <div class="chart-card">
+      <div class="chart-title">Top 5 Products <span>BY REVENUE</span></div>
+      <div class="chart-wrap"><canvas id="topProductsChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Revenue by Region <span>DISTRIBUTION</span></div>
+      <div class="chart-wrap"><canvas id="regionChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Sales Rep Performance <span>RANKING</span></div>
+      <div class="chart-wrap"><canvas id="repChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- DATA TABLE -->
+  <div class="table-card">
+    <div class="chart-title" style="margin-bottom:12px">
+      Transaction Details
+      <span id="tableCount">0 RECORDS</span>
+    </div>
+    <div style="overflow:auto">
+      <table>
+        <thead>
+          <tr id="tableHead"></tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ─── STATE ───────────────────────────────────────────────
+let rawData = [];
+let filteredData = [];
+let charts = {};
+let activeRep = 'all';
+
+// ─── SAMPLE DATA ─────────────────────────────────────────
+function generateSampleData() {
+  const products = ['ProDesk X1','CloudSync Pro','DataVault 360','AI Insights','SecureShield','TeamFlow','ReportMaster','CodeBench'];
+  const categories = ['Software','Hardware','Services','Licenses'];
+  const regions = ['North','South','East','West'];
+  const reps = ['Priya S.','Arjun K.','Meera R.','Vikram T.','Anjali M.'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const quarters = {Jan:'q1',Feb:'q1',Mar:'q1',Apr:'q2',May:'q2',Jun:'q2',Jul:'q3',Aug:'q3',Sep:'q3',Oct:'q4',Nov:'q4',Dec:'q4'};
+  const data = [];
+  for(let i=0;i<320;i++){
+    const prod = products[Math.floor(Math.random()*products.length)];
+    const cat = categories[Math.floor(Math.random()*categories.length)];
+    const reg = regions[Math.floor(Math.random()*regions.length)];
+    const rep = reps[Math.floor(Math.random()*reps.length)];
+    const mon = months[Math.floor(Math.random()*months.length)];
+    const qty = Math.floor(Math.random()*20)+1;
+    const price = Math.round((Math.random()*900+100)*100)/100;
+    data.push({
+      Date: mon + ' 2024',
+      Month: mon,
+      Quarter: quarters[mon],
+      Product: prod,
+      Category: cat,
+      Region: reg,
+      Rep: rep,
+      Quantity: qty,
+      UnitPrice: price,
+      Revenue: Math.round(qty * price * 100) / 100,
+      Status: Math.random() > 0.15 ? 'Completed' : (Math.random() > 0.5 ? 'Pending' : 'Cancelled')
+    });
+  }
+  return data;
+}
+
+function loadSampleData() {
+  rawData = generateSampleData();
+  activeRep = 'all';
+  populateFilters();
+  buildSlicers();
+  applyFilters();
+  showToast('✅ Sample data loaded · 320 records');
+}
+
+// ─── FILE IMPORT ──────────────────────────────────────────
+function handleCSV(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  Papa.parse(file, {
+    header: true, skipEmptyLines: true,
+    complete: function(results) {
+      rawData = results.data.map(r => {
+        r.Revenue = parseFloat(r.Revenue || r.revenue || r.Sales || 0);
+        r.Quantity = parseInt(r.Quantity || r.quantity || r.Qty || 1);
+        r.UnitPrice = parseFloat(r.UnitPrice || r.Price || r.price || 0);
+        return r;
+      });
+      document.getElementById('importInfo').textContent = `📄 ${file.name} · ${rawData.length} records`;
+      activeRep = 'all';
+      populateFilters(); buildSlicers(); applyFilters();
+      showToast(`✅ CSV loaded · ${rawData.length} rows`);
+    }
+  });
+}
+
+function handleXLSX(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const wb = XLSX.read(e.target.result, {type:'binary'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    rawData = XLSX.utils.sheet_to_json(ws);
+    rawData = rawData.map(r => {
+      r.Revenue = parseFloat(r.Revenue || r.revenue || r.Sales || 0);
+      r.Quantity = parseInt(r.Quantity || r.quantity || r.Qty || 1);
+      r.UnitPrice = parseFloat(r.UnitPrice || r.Price || r.price || 0);
+      return r;
+    });
+    document.getElementById('importInfo').textContent = `📊 ${file.name} · ${rawData.length} records`;
+    activeRep = 'all'; populateFilters(); buildSlicers(); applyFilters();
+    showToast(`✅ Excel loaded · ${rawData.length} rows`);
+  };
+  reader.readAsBinaryString(file);
+}
+
+// ─── FILTERS ──────────────────────────────────────────────
+function populateFilters() {
+  const regions = ['all', ...new Set(rawData.map(d => d.Region).filter(Boolean))];
+  const cats = ['all', ...new Set(rawData.map(d => d.Category).filter(Boolean))];
+  const rSel = document.getElementById('filterRegion');
+  const cSel = document.getElementById('filterCategory');
+  rSel.innerHTML = regions.map(r => `<option value="${r}">${r === 'all' ? 'All Regions' : r}</option>`).join('');
+  cSel.innerHTML = cats.map(c => `<option value="${c}">${c === 'all' ? 'All Categories' : c}</option>`).join('');
+}
+
+function buildSlicers() {
+  const reps = ['all', ...new Set(rawData.map(d => d.Rep).filter(Boolean))];
+  const container = document.getElementById('repSlicers');
+  container.innerHTML = reps.map(r =>
+    `<div class="slicer-chip ${r===activeRep?'active':''}" onclick="setRep('${r}')">${r==='all'?'All Reps':r}</div>`
+  ).join('');
+}
+
+function setRep(rep) {
+  activeRep = rep;
+  document.querySelectorAll('.slicer-chip').forEach(c => {
+    c.classList.toggle('active', c.textContent === (rep==='all'?'All Reps':rep));
+  });
+  applyFilters();
+}
+
+function applyFilters() {
+  const region = document.getElementById('filterRegion').value;
+  const cat = document.getElementById('filterCategory').value;
+  const period = document.getElementById('filterPeriod').value;
+  const search = document.getElementById('searchInput').value.toLowerCase();
+  filteredData = rawData.filter(d => {
+    if (region !== 'all' && d.Region !== region) return false;
+    if (cat !== 'all' && d.Category !== cat) return false;
+    if (period !== 'all' && d.Quarter !== period) return false;
+    if (activeRep !== 'all' && d.Rep !== activeRep) return false;
+    if (search && !JSON.stringify(d).toLowerCase().includes(search)) return false;
+    return true;
+  });
+  updateKPIs();
+  renderCharts();
+  renderTable();
+}
+
+function resetFilters() {
+  document.getElementById('filterRegion').value = 'all';
+  document.getElementById('filterCategory').value = 'all';
+  document.getElementById('filterPeriod').value = 'all';
+  document.getElementById('searchInput').value = '';
+  activeRep = 'all';
+  buildSlicers();
+  applyFilters();
+}
+
+// ─── KPIs ─────────────────────────────────────────────────
+function updateKPIs() {
+  const rev = filteredData.reduce((s,d) => s + (d.Revenue||0), 0);
+  const orders = filteredData.filter(d => d.Status === 'Completed' || !d.Status).length;
+  const aov = orders ? rev / orders : 0;
+
+  // top product
+  const prodMap = {};
+  filteredData.forEach(d => { prodMap[d.Product] = (prodMap[d.Product]||0) + (d.Revenue||0); });
+  const topProd = Object.entries(prodMap).sort((a,b)=>b[1]-a[1])[0];
+
+  document.getElementById('kpiRevenue').textContent = '₹' + fmt(rev);
+  document.getElementById('kpiRevenueChange').textContent = `↑ ${filteredData.length} transactions analyzed`;
+  document.getElementById('kpiOrders').textContent = orders.toLocaleString();
+  document.getElementById('kpiOrdersChange').textContent = `${filteredData.length - orders} pending/cancelled`;
+  document.getElementById('kpiAOV').textContent = '₹' + fmt(aov);
+  document.getElementById('kpiAOVChange').textContent = 'average per order';
+  document.getElementById('kpiTopProduct').textContent = topProd ? topProd[0] : '—';
+  document.getElementById('kpiTopProductSub').textContent = topProd ? '₹' + fmt(topProd[1]) + ' total revenue' : '—';
+}
+
+function fmt(n) {
+  if (n >= 1e7) return (n/1e7).toFixed(1) + 'Cr';
+  if (n >= 1e5) return (n/1e5).toFixed(1) + 'L';
+  if (n >= 1e3) return (n/1e3).toFixed(1) + 'K';
+  return n.toFixed(0);
+}
+
+// ─── CHARTS ───────────────────────────────────────────────
+const MONTHS_ORDER = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const COLORS = ['#f0c040','#4af0b0','#6090f0','#f06090','#c080f0','#f09040','#40d0f0','#f0f040'];
+
+function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+
+function renderCharts() {
+  renderRevenueTrend();
+  renderCategoryChart();
+  renderTopProducts();
+  renderRegionChart();
+  renderRepChart();
+}
+
+function renderRevenueTrend() {
+  destroyChart('revenue');
+  const monthly = {};
+  MONTHS_ORDER.forEach(m => monthly[m] = 0);
+  filteredData.forEach(d => { if(d.Month && monthly[d.Month]!==undefined) monthly[d.Month] += d.Revenue||0; });
+  const labels = MONTHS_ORDER.filter(m => monthly[m] > 0 || filteredData.some(d=>d.Month===m));
+  const values = labels.map(m => monthly[m]);
+  document.getElementById('trendLabel').textContent = 'MONTHLY';
+  const ctx = document.getElementById('revenueChart').getContext('2d');
+  const grad = ctx.createLinearGradient(0,0,0,300);
+  grad.addColorStop(0,'rgba(240,192,64,0.25)');
+  grad.addColorStop(1,'rgba(240,192,64,0)');
+  charts['revenue'] = new Chart(ctx, {
+    type:'line', data:{
+      labels, datasets:[{
+        label:'Revenue', data:values,
+        borderColor:'#f0c040', backgroundColor:grad,
+        borderWidth:2, fill:true, tension:0.4,
+        pointBackgroundColor:'#f0c040', pointRadius:4, pointHoverRadius:7
+      }]
+    },
+    options: chartOptions('₹')
+  });
+}
+
+function renderCategoryChart() {
+  destroyChart('category');
+  const catMap = {};
+  filteredData.forEach(d => { catMap[d.Category] = (catMap[d.Category]||0) + (d.Revenue||0); });
+  const entries = Object.entries(catMap).sort((a,b)=>b[1]-a[1]);
+  const ctx = document.getElementById('categoryChart').getContext('2d');
+  charts['category'] = new Chart(ctx, {
+    type:'doughnut',
+    data:{
+      labels: entries.map(e=>e[0]),
+      datasets:[{ data: entries.map(e=>e[1]), backgroundColor: COLORS, borderColor:'#111318', borderWidth:3, hoverOffset:8 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ labels:{ color:'#6b7280', font:{family:'DM Mono',size:11}, padding:14 } },
+        tooltip:{ callbacks:{ label: ctx => ` ₹${fmt(ctx.parsed)}` }, backgroundColor:'#181c24', titleColor:'#e8eaf0', bodyColor:'#9ca3af' }
+      }
+    }
+  });
+}
+
+function renderTopProducts() {
+  destroyChart('topProducts');
+  const prodMap = {};
+  filteredData.forEach(d => { prodMap[d.Product] = (prodMap[d.Product]||0) + (d.Revenue||0); });
+  const top5 = Object.entries(prodMap).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const ctx = document.getElementById('topProductsChart').getContext('2d');
+  charts['topProducts'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: top5.map(e=>e[0]),
+      datasets:[{ label:'Revenue', data:top5.map(e=>e[1]), backgroundColor: COLORS.slice(0,5), borderRadius:6, borderSkipped:false }]
+    },
+    options: { ...chartOptions('₹'), indexAxis:'y' }
+  });
+}
+
+function renderRegionChart() {
+  destroyChart('region');
+  const regMap = {};
+  filteredData.forEach(d => { regMap[d.Region] = (regMap[d.Region]||0) + (d.Revenue||0); });
+  const entries = Object.entries(regMap).sort((a,b)=>b[1]-a[1]);
+  const ctx = document.getElementById('regionChart').getContext('2d');
+  charts['region'] = new Chart(ctx, {
+    type:'polarArea',
+    data:{
+      labels: entries.map(e=>e[0]),
+      datasets:[{ data: entries.map(e=>e[1]), backgroundColor: COLORS.map(c=>c+'99'), borderColor: COLORS, borderWidth:2 }]
+    },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{
+        legend:{ labels:{ color:'#6b7280', font:{family:'DM Mono',size:11} } },
+        tooltip:{ callbacks:{ label: ctx => ` ₹${fmt(ctx.parsed.r)}` }, backgroundColor:'#181c24', titleColor:'#e8eaf0', bodyColor:'#9ca3af' }
+      },
+      scales:{ r:{ ticks:{ color:'#3d4351', backdropColor:'transparent', font:{size:9} }, grid:{ color:'rgba(255,255,255,0.05)' } } }
+    }
+  });
+}
+
+function renderRepChart() {
+  destroyChart('rep');
+  const repMap = {};
+  filteredData.forEach(d => { repMap[d.Rep] = (repMap[d.Rep]||0) + (d.Revenue||0); });
+  const sorted = Object.entries(repMap).sort((a,b)=>b[1]-a[1]);
+  const ctx = document.getElementById('repChart').getContext('2d');
+  charts['rep'] = new Chart(ctx, {
+    type:'bar',
+    data:{
+      labels: sorted.map(e=>e[0]),
+      datasets:[{ label:'Revenue', data:sorted.map(e=>e[1]), backgroundColor:'#6090f0', borderRadius:6, borderSkipped:false }]
+    },
+    options: chartOptions('₹')
+  });
+}
+
+function chartOptions(prefix='') {
+  return {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{
+      legend:{ display:false },
+      tooltip:{ callbacks:{ label: ctx => ` ${prefix}${fmt(ctx.parsed.y ?? ctx.parsed.x ?? ctx.parsed)}` }, backgroundColor:'#181c24', titleColor:'#e8eaf0', bodyColor:'#9ca3af', borderColor:'#2a2f3a', borderWidth:1 }
+    },
+    scales:{
+      x:{ ticks:{ color:'#6b7280', font:{family:'DM Mono',size:10} }, grid:{ color:'rgba(255,255,255,0.04)' }, border:{color:'rgba(255,255,255,0.06)'} },
+      y:{ ticks:{ color:'#6b7280', font:{family:'DM Mono',size:10}, callback: v => prefix+fmt(v) }, grid:{ color:'rgba(255,255,255,0.04)' }, border:{color:'rgba(255,255,255,0.06)'} }
+    }
+  };
+}
+
+// ─── TABLE ────────────────────────────────────────────────
+function renderTable() {
+  const data = filteredData.slice(0, 50);
+  document.getElementById('tableCount').textContent = `${filteredData.length} RECORDS (SHOWING ${data.length})`;
+  if (!data.length) {
+    document.getElementById('tableHead').innerHTML = '';
+    document.getElementById('tableBody').innerHTML = '<tr><td colspan="99"><div class="empty-state"><div class="empty-icon">🔍</div><div>No records match your filters</div></div></td></tr>';
+    return;
+  }
+  const cols = ['Date','Product','Category','Region','Rep','Quantity','UnitPrice','Revenue','Status'];
+  const availCols = cols.filter(c => data[0][c] !== undefined);
+  document.getElementById('tableHead').innerHTML = availCols.map(c=>`<th>${c}</th>`).join('');
+  const maxRev = Math.max(...filteredData.map(d=>d.Revenue||0));
+  document.getElementById('tableBody').innerHTML = data.map(row => `
+    <tr>
+      ${availCols.map(c => {
+        if (c === 'Revenue') return `<td><strong style="color:var(--accent)">₹${fmt(row[c]||0)}</strong><div class="bar-mini"><div class="bar-fill" style="width:${((row[c]||0)/maxRev*100).toFixed(1)}%"></div></div></td>`;
+        if (c === 'Status') {
+          const cls = row[c]==='Completed'?'badge-green':row[c]==='Pending'?'badge-yellow':'badge-red';
+          return `<td><span class="badge ${cls}">${row[c]||'—'}</span></td>`;
+        }
+        if (c === 'UnitPrice') return `<td>₹${fmt(row[c]||0)}</td>`;
+        return `<td>${row[c]||'—'}</td>`;
+      }).join('')}
+    </tr>
+  `).join('');
+}
+
+// ─── TOAST ────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ─── INIT ─────────────────────────────────────────────────
+loadSampleData();
+</script>
+</body>
+</html>
